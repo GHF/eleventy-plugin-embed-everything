@@ -87,7 +87,7 @@ function liteEmbed({id, url}, options, index) {
   out += `<lite-youtube videoid="${id}" style="background-image: none;"`
   out += params ? ` params="${params}"`: "";
   out += `>`;
-  out += `<img src="//i.ytimg.com/vi_webp/${id}/maxresdefault.webp" class="lty-thumbnail" loading="lazy" decoding="async" style="display: block; position: absolute; width: 100%; height: 100%; z-index: -1;">`;
+  out += `<img src="//i.ytimg.com/vi_webp/${id}/maxresdefault.webp" alt="${id} thumbnail" class="lty-thumbnail" loading="lazy" decoding="async" style="display: block; position: absolute; width: 100%; height: 100%; z-index: -1;">`;
   out += `<div class="lty-playbtn"></div>`;
   out += `</lite-youtube>`;
   out += `</div>`;
