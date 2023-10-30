@@ -83,11 +83,20 @@ function liteEmbed({id, url}, options, index) {
     out += `<style>.${options.embedClass} lite-youtube {max-width:100%}</style>`;
     out += '\n';
   }
+  if (index === 0) {
+    out += `<script>
+    function fallback_yt_thumbnail(img, id) {
+      if (img.naturalWidth === 120 && img.naturalHeight === 90) {
+        img.src = '//i.ytimg.com/vi/' + id + '/hqdefault.jpg';
+      }
+    }
+    </script>\n`;
+  }
   out += `<div id="${id}" class="${options.embedClass}">`;
   out += `<lite-youtube videoid="${id}" style="background-image: none;"`
   out += params ? ` params="${params}"`: "";
   out += `>`;
-  out += `<img src="//i.ytimg.com/vi_webp/${id}/maxresdefault.webp" alt="${id} thumbnail" class="lty-thumbnail" loading="lazy" decoding="async" style="display: block; position: absolute; width: 100%; height: 100%; z-index: -1;">`;
+  out += `<img src="//i.ytimg.com/vi_webp/${id}/maxresdefault.webp" onload="fallback_yt_thumbnail(this, '${id}');" alt="${id} thumbnail" class="lty-thumbnail" loading="lazy" decoding="async" style="display: block; position: absolute; width: 100%; height: 100%; z-index: -1;">`;
   out += `<div class="lty-playbtn"></div>`;
   out += `</lite-youtube>`;
   out += `</div>`;
