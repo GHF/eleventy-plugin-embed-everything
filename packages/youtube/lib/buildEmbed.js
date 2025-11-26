@@ -67,16 +67,18 @@ function liteEmbed({id, url}, options, index) {
 
   const liteCssFilePath = path.join(basePath, 'lite-youtube-embed/src/lite-yt-embed.css');
   const liteJsFilePath = path.join(basePath, 'lite-youtube-embed/src/lite-yt-embed.js');
-  const inlineCss = fs.readFileSync(liteCssFilePath, 'utf-8');
-  const inlineJs = fs.readFileSync(liteJsFilePath, 'utf-8');
   const params = urlParams(options);
 
   if ( liteOpt.css.enabled && index === 0 ) {
-    out += liteOpt.css.inline ? `<style>${inlineCss}</style>` : `<link rel="stylesheet" href="${liteOpt.css.path}">`;
+    out += liteOpt.css.inline
+			? `<style>${fs.readFileSync(liteCssFilePath, "utf-8")}</style>`
+			: `<link rel="stylesheet" href="${liteOpt.css.path}">`;
     out += '\n';
   }
   if ( liteOpt.js.enabled && index === 0 ) {
-    out += liteOpt.js.inline ? `<script>${inlineJs}</script>` : `<script defer="defer" src="${liteOpt.js.path}"></script>`;
+    out += liteOpt.js.inline
+			? `<script>${fs.readFileSync(liteJsFilePath, "utf-8")}</script>`
+			: `<script defer="defer" src="${liteOpt.js.path}"></script>`;
     out += '\n';
   }
   if ( liteOpt.responsive && index === 0 ) {
