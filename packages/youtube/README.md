@@ -291,6 +291,18 @@ eleventyConfig.addPlugin(embedYouTube, {
       <td><code>hqdefault</code></td>
       <td>Override the requested <a href="https://gist.github.com/protrolium/8831763">YouTube thumbnail image file</a>. Accepted values are <code>default</code>, <code>hqdefault</code>, <code>mqdefault</code>, <code>sddefault</code>, <code>maxresdefault</code>. Note that not all sizes are available for all videos. If the requested resolution isn’t available, YouTube shows a generic placeholder instead.</td>
     </tr>
+    <tr>
+      <td><code>lite.thumbnailImage.enabled</code></td>
+      <td>Boolean</td>
+      <td><code>false</code></td>
+      <td>If enabled, the plugin renders an explicit <code>&lt;img&gt;</code> thumbnail in lite mode (lazy + async decode) and falls back from WebP placeholder images to JPEG.</td>
+    </tr>
+    <tr>
+      <td><code>lite.thumbnailImage.*</code></td>
+      <td>Object</td>
+      <td><code>{ quality: "maxresdefault", format: "webp", fallbackQuality: "maxresdefault", fallbackFormat: "jpg" }</code></td>
+      <td>Configure quality/format for the primary thumbnail and fallback thumbnail used by <code>lite.thumbnailImage.enabled</code>.</td>
+    </tr>
   </tbody>
 </table>
 

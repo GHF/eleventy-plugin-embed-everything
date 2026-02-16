@@ -60,6 +60,12 @@ const thumbnails = {
  * @property {string} [js.path] - The path to the JS file.
  * @property {boolean} [responsive] - Whether the layout is responsive.
  * @property {string} [thumbnailQuality] - The quality of the thumbnail.
+ * @property {Object} [thumbnailImage] - Optional image element thumbnail mode.
+ * @property {boolean} [thumbnailImage.enabled] - Whether image element thumbnail mode is enabled.
+ * @property {string} [thumbnailImage.quality] - Thumbnail quality filename.
+ * @property {string} [thumbnailImage.format] - Thumbnail format.
+ * @property {string} [thumbnailImage.fallbackQuality] - Fallback thumbnail quality filename.
+ * @property {string} [thumbnailImage.fallbackFormat] - Fallback thumbnail format.
  */
 const liteDefaults = {
   css: {
@@ -76,6 +82,13 @@ const liteDefaults = {
   responsive: false,
   thumbnailQuality: thumbnails.defaultSize,
   thumbnailFormat: thumbnails.defaultFormat,
+  thumbnailImage: {
+    enabled: false,
+    quality: "maxresdefault",
+    format: "webp",
+    fallbackQuality: "maxresdefault",
+    fallbackFormat: "jpg",
+  },
 };
 
 module.exports.thumbnails = thumbnails;

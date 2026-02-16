@@ -1,6 +1,7 @@
 const merge = require('deepmerge');
 const downloadAndCache = require('@11ty/eleventy-fetch');
 const { thumbnails, liteDefaults } = require('./defaults.js');
+const thumbnailDimensionsCache = new Map();
 /**
  * @typedef {import('./defaults.js').PluginOptions} PluginOptions
  * @typedef {import('./defaults.js').LiteDefaults} LiteDefaults
@@ -84,14 +85,17 @@ async function liteEmbed(url, options, index) {
   const params = stringifyUrlParams(optionsWithParamOverrides);
 
   const liteOpt = liteConfig(options);
-        liteOpt.thumbnailQuality = validateThumbnailSize(liteOpt.thumbnailQuality);
-        liteOpt.thumbnailFormat = validateThumbnailFormat(liteOpt.thumbnailFormat);
-
-  const thumbnailUrl = () => {
-    const fileTypePath = liteOpt.thumbnailFormat === 'webp' ? 'vi_webp' : 'vi';
-    const fileName = `${liteOpt.thumbnailQuality}.${liteOpt.thumbnailFormat}`;
-    return `https://i.ytimg.com/${fileTypePath}/${id ?? playlist}/${fileName}`;
-  }
+  liteOpt.thumbnailQuality = validateThumbnailSize(liteOpt.thumbnailQuality);
+  liteOpt.thumbnailFormat = validateThumbnailFormat(liteOpt.thumbnailFormat);
+  const thumbnailImageOpt = typeof liteOpt.thumbnailImage === 'object'
+    ? liteOpt.thumbnailImage
+    : liteDefaults.thumbnailImage;
+  const usesThumbnailImage = liteOpt.thumbnailImage === true || Boolean(thumbnailImageOpt.enabled);
+  const thumbnailUrl = __constructThumbnailSrc(
+    id ?? playlist,
+    liteOpt.thumbnailQuality,
+    liteOpt.thumbnailFormat
+  );
 
 	let title = undefined;
 	/**
@@ -116,23 +120,163 @@ async function liteEmbed(url, options, index) {
   const basePath = isInstalled ? path.resolve(__dirname, '../../') : path.resolve(__dirname, '../node_modules/');
   const liteCssFilePath = path.join(basePath, 'lite-youtube-embed/src/lite-yt-embed.css');
   const liteJsFilePath = path.join(basePath, 'lite-youtube-embed/src/lite-yt-embed.js');
-  const inlineCss = fs.readFileSync(liteCssFilePath, 'utf-8');
-  const inlineJs = fs.readFileSync(liteJsFilePath, 'utf-8');
-
   // Build the lite embed code
   let out = '';
   if ( index === 0 && liteOpt.css.enabled) {
-    out += liteOpt.css.inline ? `<style>${inlineCss}</style>\n` : `<link rel="stylesheet" href="${liteOpt.css.path}">\n`;
+    out += liteOpt.css.inline
+      ? `<style>${fs.readFileSync(liteCssFilePath, 'utf-8')}</style>\n`
+      : `<link rel="stylesheet" href="${liteOpt.css.path}">\n`;
   }
   if ( index === 0 && liteOpt.js.enabled) {
-    out += liteOpt.js.inline ? `<script>${inlineJs}</script>\n` : `<script defer="defer" src="${liteOpt.js.path}"></script>\n`;
+    out += liteOpt.js.inline
+      ? `<script>${fs.readFileSync(liteJsFilePath, 'utf-8')}</script>\n`
+      : `<script defer="defer" src="${liteOpt.js.path}"></script>\n`;
   }
   out += index === 0 && liteOpt.responsive ? `<style>.${options.embedClass} lite-youtube {max-width:100%}</style>\n` : '';
+  out += index === 0 && usesThumbnailImage ? `${thumbnailImageStyle()}\n` : '';
 
   out += `<div id="${id ?? playlist}" class="${options.embedClass}">`;
-  out += `<lite-youtube videoid="${id ?? playlist}" style="background-image: url('${thumbnailUrl()}');"${params ? ` params="${params}"` : ''}${liteOpt.jsApi ? ' js-api' : ''}${title ?? ''}>`;
-  out += '<div class="lty-playbtn"></div></lite-youtube></div>';
+  out += `<lite-youtube videoid="${id ?? playlist}" style="${usesThumbnailImage ? 'background-image: none;' : `background-image: url('${thumbnailUrl}');`}"${params ? ` params="${params}"` : ''}${liteOpt.jsApi ? ' js-api' : ''}${title ?? ''}>`;
+  if (usesThumbnailImage) {
+    out += await thumbnailImageMarkup(id ?? playlist, thumbnailImageOpt);
+  }
+  out += '<div class="lyt-playbtn"></div></lite-youtube></div>';
   return out;
+}
+
+/**
+ * Style block for image-element thumbnails in lite mode.
+ * Keeps the play button on top of the thumbnail image.
+ * @returns {string}
+ */
+function thumbnailImageStyle() {
+  return "<style>lite-youtube>img.lty-thumbnail{display:block;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}lite-youtube:before{z-index:1}</style>";
+}
+
+/**
+ * Markup for image-element thumbnails in lite mode.
+ * Falls back to JPEG when YouTube returns a 120x90 WebP placeholder.
+ * @param {string} id - YouTube video ID
+ * @param {LiteDefaults['thumbnailImage']} thumbnailOpt - Thumbnail image options
+ * @returns {string}
+ */
+async function thumbnailImageMarkup(id, thumbnailOpt) {
+  const quality = validateThumbnailSize(thumbnailOpt.quality);
+  const format = validateThumbnailFormat(thumbnailOpt.format);
+  const fallbackQuality = validateThumbnailSize(thumbnailOpt.fallbackQuality);
+  const fallbackFormat = validateThumbnailFormat(thumbnailOpt.fallbackFormat);
+  let src = __constructThumbnailSrc(id, quality, format);
+  const fallbackSrc = __constructThumbnailSrc(id, fallbackQuality, fallbackFormat);
+  let needsClientFallbackCheck = format === 'webp' && src !== fallbackSrc;
+
+  if (needsClientFallbackCheck && thumbnailOpt.detectAtBuildTime !== false) {
+    try {
+      const dimensions = await __getWebpDimensions(src);
+      if (dimensions.width === 120 && dimensions.height === 90) {
+        src = fallbackSrc;
+      }
+      needsClientFallbackCheck = false;
+    } catch {
+      // Keep the runtime fallback for network-restricted builds.
+      needsClientFallbackCheck = true;
+    }
+  }
+
+  const fallbackOnLoad = needsClientFallbackCheck
+    ? ` onload="if(this.naturalWidth===120&&this.naturalHeight===90){this.src='${fallbackSrc}';}"`
+    : '';
+  return `<img src="${src}"${fallbackOnLoad} alt="${id} thumbnail" class="lty-thumbnail" loading="lazy" decoding="async">`;
+}
+
+/**
+ * Construct a YouTube thumbnail URL.
+ * @param {string} id - YouTube video ID
+ * @param {string} quality - Thumbnail quality
+ * @param {string} format - Thumbnail format
+ * @returns {string}
+ */
+function __constructThumbnailSrc(id, quality, format) {
+  const fileTypePath = format === 'webp' ? 'vi_webp' : 'vi';
+  const fileName = `${quality}.${format}`;
+  return `https://i.ytimg.com/${fileTypePath}/${id}/${fileName}`;
+}
+
+/**
+ * Probe dimensions from a remote WebP image.
+ * Uses a tiny ranged request so build-time checks are inexpensive.
+ * @param {string} imageUrl
+ * @returns {Promise<{width:number,height:number}>}
+ */
+async function __getWebpDimensions(imageUrl) {
+  if (thumbnailDimensionsCache.has(imageUrl)) {
+    return thumbnailDimensionsCache.get(imageUrl);
+  }
+
+  const promise = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(imageUrl, {
+        signal: controller.signal,
+        headers: {
+          Range: "bytes=0-63",
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`Thumbnail probe failed with status ${response.status}`);
+      }
+
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      return __parseWebpDimensions(bytes);
+    } finally {
+      clearTimeout(timeout);
+    }
+  })();
+
+  thumbnailDimensionsCache.set(imageUrl, promise);
+  return promise;
+}
+
+/**
+ * Parse width/height from WebP header bytes.
+ * @param {Uint8Array} bytes
+ * @returns {{width:number,height:number}}
+ */
+function __parseWebpDimensions(bytes) {
+  if (bytes.length < 30 || __readFourCc(bytes, 0) !== "RIFF" || __readFourCc(bytes, 8) !== "WEBP") {
+    throw new Error("Invalid WebP header");
+  }
+
+  const format = __readFourCc(bytes, 12);
+  if (format === "VP8 ") {
+    const width = (bytes[26] | (bytes[27] << 8)) & 0x3fff;
+    const height = (bytes[28] | (bytes[29] << 8)) & 0x3fff;
+    return { width, height };
+  }
+
+  if (format === "VP8L") {
+    const width = 1 + (bytes[21] | ((bytes[22] & 0x3f) << 8));
+    const height = 1 + ((bytes[24] & 0x0f) << 10 | (bytes[23] << 2) | ((bytes[22] & 0xc0) >> 6));
+    return { width, height };
+  }
+
+  if (format === "VP8X") {
+    const width = 1 + bytes[24] + (bytes[25] << 8) + (bytes[26] << 16);
+    const height = 1 + bytes[27] + (bytes[28] << 8) + (bytes[29] << 16);
+    return { width, height };
+  }
+
+  throw new Error(`Unsupported WebP format: ${format}`);
+}
+
+/**
+ * Read a 4-byte FourCC chunk label.
+ * @param {Uint8Array} bytes
+ * @param {number} offset
+ * @returns {string}
+ */
+function __readFourCc(bytes, offset) {
+  return String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
 }
 
 /**
